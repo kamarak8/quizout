@@ -294,7 +294,9 @@ export default function PlayPage() {
         }
         await supabase.from('players').update({ score }).eq('id', player.id)
       }
-      await supabase.from('rooms').update({ status: 'reveal' }).eq('id', room.id)
+      // Season mode goes to season_revealing, penalty shootout goes to reveal
+      const nextStatus = room.game_mode === 'ten_game_season' ? 'season_revealing' : 'reveal'
+      await supabase.from('rooms').update({ status: nextStatus }).eq('id', room.id)
     } else {
       await supabase.from('rooms')
         .update({ current_question_index: nextIdx })
@@ -326,15 +328,17 @@ export default function PlayPage() {
         setMyPlayer(playersData.find(p => p.id === myId) ?? null)
       }
 
-      // Load 15 questions — first 5 for main game, next 10 for sudden death
+      // Load questions based on game mode
+      const isSeason = roomData.game_mode === 'ten_game_season'
+      const mainCount = isSeason ? 10 : 5
       const { data: allQ } = await supabase
         .from('questions')
         .select('*')
         .eq('category', roomData.category)
-        .limit(15)
+        .limit(isSeason ? 10 : 15)
       if (allQ) {
-        setMainQuestions(allQ.slice(0, 5))
-        setSdQuestions(allQ.slice(5))
+        setMainQuestions(allQ.slice(0, mainCount))
+        setSdQuestions(isSeason ? [] : allQ.slice(5))
       }
 
       const { data: answersData } = await supabase
@@ -361,6 +365,10 @@ export default function PlayPage() {
             advancingRef.current = false
           }
           setRoom(updated)
+          // Season mode: redirect to season reveal page
+          if (updated.status === 'season_revealing') {
+            router.push(`/room/${code}/season`)
+          }
           // When sudden death starts OR advances to next question, clear local SD answer state
           if (updated.status === 'sudden_death') {
             const prev = roomRef.current
@@ -624,7 +632,9 @@ export default function PlayPage() {
         <div className="w-full max-w-sm space-y-5">
           <div className="flex items-center justify-between">
             <span className="text-xs text-green-300/50 uppercase tracking-widest">{categoryLabel}</span>
-            <span className="text-xs text-white/40">Question {qi + 1} / {mainQuestions.length}</span>
+            <span className="text-xs text-white/40">
+              {room.game_mode === 'ten_game_season' ? `Game ${qi + 1} of ${mainQuestions.length}` : `Question ${qi + 1} / ${mainQuestions.length}`}
+            </span>
           </div>
           <div className="h-1 bg-white/10 rounded-full overflow-hidden">
             <div className="h-full bg-amber-400 transition-all duration-700"

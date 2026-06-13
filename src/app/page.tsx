@@ -4,28 +4,32 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { generateRoomCode, saveMyPlayerId } from '@/lib/utils'
+import { GAME_MODES, type GameMode } from '@/types'
 
 export default function HomePage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [mode, setMode] = useState<'home' | 'join' | 'create'>('home')
+  const [gameMode, setGameMode] = useState<GameMode>('penalty_shootout')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // ── Create a new room ──────────────────────────────────────────────────────
   async function handleCreate() {
     if (!name.trim()) { setError('Enter your name first'); return }
     setLoading(true)
     setError('')
     const supabase = createClient()
-
     const code = generateRoomCode()
 
-    // 1. Insert room (host_id is a placeholder uuid we'll fill after player is created)
     const { data: room, error: roomErr } = await supabase
       .from('rooms')
-      .insert({ code, host_id: '00000000-0000-0000-0000-000000000000', category: '' })
+      .insert({
+        code,
+        host_id: '00000000-0000-0000-0000-000000000000',
+        category: '',
+        game_mode: gameMode,
+      })
       .select()
       .single()
 
@@ -35,7 +39,6 @@ export default function HomePage() {
       return
     }
 
-    // 2. Insert host player
     const { data: player, error: playerErr } = await supabase
       .from('players')
       .insert({ room_id: room.id, name: name.trim(), is_host: true })
@@ -48,29 +51,21 @@ export default function HomePage() {
       return
     }
 
-    // 3. Update room with real host_id
     await supabase.from('rooms').update({ host_id: player.id }).eq('id', room.id)
-
     saveMyPlayerId(player.id)
     router.push(`/room/${code}`)
   }
 
-  // ── Join an existing room ──────────────────────────────────────────────────
   async function handleJoin() {
     if (!name.trim()) { setError('Enter your name first'); return }
     if (!joinCode.trim()) { setError('Enter the room code'); return }
     setLoading(true)
     setError('')
     const supabase = createClient()
-
     const upperCode = joinCode.trim().toUpperCase()
 
-    // Find room
     const { data: room, error: roomErr } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('code', upperCode)
-      .single()
+      .from('rooms').select('*').eq('code', upperCode).single()
 
     if (roomErr || !room) {
       setError('Room not found. Check the code and try again.')
@@ -84,7 +79,6 @@ export default function HomePage() {
       return
     }
 
-    // Add player
     const { data: player, error: playerErr } = await supabase
       .from('players')
       .insert({ room_id: room.id, name: name.trim(), is_host: false })
@@ -103,26 +97,21 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
-
-      {/* Logo */}
       <div className="mb-10 text-center">
         <div className="text-7xl mb-3">⚽</div>
         <h1 className="font-display text-6xl text-white tracking-widest">QUIZOUT</h1>
         <p className="text-green-300/70 mt-2 text-sm tracking-wide uppercase">
-          Penalty shootout football trivia
+          Multiplayer football trivia
         </p>
       </div>
 
-      {/* Card */}
       <div className="card w-full max-w-sm p-6 space-y-4">
-
         {error && (
           <p className="text-red-400 text-sm text-center bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2">
             {error}
           </p>
         )}
 
-        {/* Name input — always visible */}
         <div>
           <label className="text-xs uppercase tracking-widest text-green-300/60 mb-1 block">
             Your name
@@ -139,7 +128,6 @@ export default function HomePage() {
           />
         </div>
 
-        {/* Mode: home → show two buttons */}
         {mode === 'home' && (
           <div className="space-y-3 pt-2">
             <button
@@ -161,7 +149,6 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Mode: join */}
         {mode === 'join' && (
           <div className="space-y-3 pt-2">
             <div>
@@ -197,9 +184,36 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Mode: create — confirm screen */}
         {mode === 'create' && (
           <div className="space-y-3 pt-2">
+            <div>
+              <label className="text-xs uppercase tracking-widest text-green-300/60 mb-2 block">
+                Game mode
+              </label>
+              <div className="space-y-2">
+                {GAME_MODES.map(gm => (
+                  <button
+                    key={gm.value}
+                    onClick={() => setGameMode(gm.value)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                      gameMode === gm.value
+                        ? 'border-amber-400 bg-amber-400/15'
+                        : 'border-white/20 bg-white/5 hover:border-white/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{gm.icon}</span>
+                      <div>
+                        <p className={`text-sm font-semibold ${gameMode === gm.value ? 'text-amber-100' : 'text-white'}`}>
+                          {gm.label}
+                        </p>
+                        <p className="text-xs text-white/40 mt-0.5">{gm.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
             <button
               onClick={handleCreate}
               disabled={loading}

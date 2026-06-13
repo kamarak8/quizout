@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { getMyPlayerId, getRoomJoinUrl } from '@/lib/utils'
-import { CATEGORIES } from '@/types'
+import { CATEGORIES, GAME_MODES } from '@/types'
 import type { Room, Player } from '@/types'
 
 export default function LobbyPage() {
@@ -20,11 +20,9 @@ export default function LobbyPage() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
 
-  // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
     const myId = getMyPlayerId()
     if (!myId) { router.push('/'); return }
-
     const supabase = createClient()
 
     async function load() {
@@ -46,20 +44,19 @@ export default function LobbyPage() {
 
     load()
 
-    // ── Realtime subscriptions ─────────────────────────────────────────────
     const channel = supabase
       .channel(`lobby:${code}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${code}` },
         payload => {
           const updated = payload.new as Room
           setRoom(updated)
-          // Sync category state when room resets (Play Again resets category to '')
           setCategory(updated.category || '')
-          // Reset starting flag so host can kick off again
           setStarting(false)
-          // If host started the game, redirect everyone to play
           if (updated.status === 'questions') {
             router.push(`/room/${code}/play`)
+          }
+          if (updated.status === 'season_revealing') {
+            router.push(`/room/${code}/season`)
           }
         }
       )
@@ -76,14 +73,12 @@ export default function LobbyPage() {
     return () => { supabase.removeChannel(channel) }
   }, [code, router])
 
-  // ── Copy invite link ───────────────────────────────────────────────────────
   const copyLink = useCallback(() => {
     navigator.clipboard.writeText(getRoomJoinUrl(code))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [code])
 
-  // ── Start game (host only) ─────────────────────────────────────────────────
   async function handleStart() {
     if (!category) { setError('Pick a category first'); return }
     if (players.length < 2) { setError('You need at least 2 players to start'); return }
@@ -101,10 +96,11 @@ export default function LobbyPage() {
       setError('Could not start game. Try again.')
       setStarting(false)
     }
-    // Realtime will redirect everyone
   }
 
   const isHost = myPlayer?.is_host ?? false
+  const gameModeLabel = GAME_MODES.find(gm => gm.value === room?.game_mode)?.label ?? ''
+  const gameModeIcon = GAME_MODES.find(gm => gm.value === room?.game_mode)?.icon ?? '⚽'
 
   if (!room) {
     return (
@@ -116,11 +112,13 @@ export default function LobbyPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-start px-4 py-10">
-
-      {/* Header */}
       <div className="text-center mb-8">
         <p className="text-green-300/50 text-xs uppercase tracking-widest mb-1">Room code</p>
         <h1 className="font-display text-6xl text-white tracking-widest">{code}</h1>
+        <div className="flex items-center justify-center gap-2 mt-2">
+          <span>{gameModeIcon}</span>
+          <span className="text-white/50 text-xs uppercase tracking-widest">{gameModeLabel}</span>
+        </div>
         <button
           onClick={copyLink}
           className="mt-3 text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2 transition-colors"
@@ -130,8 +128,6 @@ export default function LobbyPage() {
       </div>
 
       <div className="w-full max-w-sm space-y-4">
-
-        {/* Player list */}
         <div className="card p-5">
           <h2 className="text-xs uppercase tracking-widest text-green-300/60 mb-3">
             Players — {players.length} in room
@@ -153,7 +149,6 @@ export default function LobbyPage() {
           </div>
         </div>
 
-        {/* Category picker — host only */}
         {isHost && (
           <div className="card p-5">
             <h2 className="text-xs uppercase tracking-widest text-green-300/60 mb-3">
@@ -177,7 +172,6 @@ export default function LobbyPage() {
           </div>
         )}
 
-        {/* Non-host: show chosen category */}
         {!isHost && room.category && (
           <div className="card p-4 text-center">
             <p className="text-white/50 text-xs uppercase tracking-widest mb-1">Category</p>
@@ -187,15 +181,12 @@ export default function LobbyPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
-          <p className="text-red-400 text-sm text-center bg-red-500/10 border border-red-500/30
-                        rounded-lg px-4 py-2">
+          <p className="text-red-400 text-sm text-center bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2">
             {error}
           </p>
         )}
 
-        {/* Start button — host only */}
         {isHost ? (
           <button
             onClick={handleStart}
@@ -205,7 +196,7 @@ export default function LobbyPage() {
                        transition-all duration-200 font-display text-2xl tracking-widest
                        active:scale-95"
           >
-            {starting ? 'STARTING…' : 'KICK OFF ⚽'}
+            {starting ? 'STARTING…' : room.game_mode === 'ten_game_season' ? 'KICK OFF 🏆' : 'KICK OFF ⚽'}
           </button>
         ) : (
           <div className="card p-4 text-center animate-pulse">
