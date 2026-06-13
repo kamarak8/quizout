@@ -296,7 +296,9 @@ export default function PlayPage() {
       }
       // Season mode goes to season_revealing, penalty shootout goes to reveal
       const nextStatus = room.game_mode === 'ten_game_season' ? 'season_revealing' : 'reveal'
-      await supabase.from('rooms').update({ status: nextStatus }).eq('id', room.id)
+      console.log('ADVANCING TO STATUS:', nextStatus, 'game_mode:', room.game_mode)
+      const { error: statusErr } = await supabase.from('rooms').update({ status: nextStatus }).eq('id', room.id)
+      console.log('STATUS UPDATE ERROR:', statusErr)
     } else {
       await supabase.from('rooms')
         .update({ current_question_index: nextIdx })

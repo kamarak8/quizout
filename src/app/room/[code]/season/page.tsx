@@ -110,6 +110,10 @@ export default function SeasonPage() {
   const commentaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [showChampion, setShowChampion] = useState(false)
+  const [autoRevealing, setAutoRevealing] = useState(false)
+  const autoRevealTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const roomRef = useRef<Room | null>(null)
+  const autoRevealingRef = useRef(false)
 
   const myId = getMyPlayerId()
 
@@ -178,8 +182,12 @@ export default function SeasonPage() {
     return () => {
       supabase.removeChannel(channel)
       if (commentaryTimer.current) clearTimeout(commentaryTimer.current)
+      if (autoRevealTimer.current) clearTimeout(autoRevealTimer.current)
     }
   }, [code, myId, router])
+
+  useEffect(() => { roomRef.current = room }, [room])
+  useEffect(() => { autoRevealingRef.current = autoRevealing }, [autoRevealing])
 
   // Rebuild table whenever reveal round changes
   useEffect(() => {
@@ -187,11 +195,10 @@ export default function SeasonPage() {
     const round = room.current_season_reveal_round
     const newTable = calculateSeasonTable(players, answers, questions, round, prevTable)
 
+    const lines = round > 0 ? getGameweekCommentary(newTable, round, TOTAL_GAMES) : []
     if (round > 0) {
-      const lines = getGameweekCommentary(newTable, round, TOTAL_GAMES)
       setCommentary(lines)
       setCommentaryIdx(0)
-      // Cycle through commentary lines
       lines.forEach((_, i) => {
         commentaryTimer.current = setTimeout(() => setCommentaryIdx(i), i * 2000)
       })
@@ -200,8 +207,28 @@ export default function SeasonPage() {
     setPrevTable(table)
     setTable(newTable)
     setIsAdvancing(false)
+
+    // If auto-revealing, schedule next round after commentary has shown
+    if (autoRevealingRef.current) {
+      const commentaryDuration = Math.max(lines.length * 2000 + 1500, 3000)
+      autoRevealTimer.current = setTimeout(async () => {
+        const currentRoom = roomRef.current
+        if (!currentRoom || currentRoom.status === 'finished') return
+        const next = currentRoom.current_season_reveal_round + 1
+        const supabase = createClient()
+        if (next > TOTAL_GAMES) {
+          await supabase.from('rooms').update({ status: 'finished' }).eq('id', currentRoom.id)
+          autoRevealingRef.current = false
+          setAutoRevealing(false)
+        } else {
+          await supabase.from('rooms')
+            .update({ current_season_reveal_round: next })
+            .eq('id', currentRoom.id)
+        }
+      }, commentaryDuration)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.current_season_reveal_round])
+  }, [room?.current_season_reveal_round, autoRevealing])
 
   async function handleReveal() {
     if (!room || !myPlayer?.is_host || isAdvancing) return
@@ -210,15 +237,23 @@ export default function SeasonPage() {
     const nextRound = room.current_season_reveal_round + 1
 
     if (nextRound > TOTAL_GAMES) {
-      // All revealed — end the season
-      await supabase.from('rooms')
-        .update({ status: 'finished' })
-        .eq('id', room.id)
+      await supabase.from('rooms').update({ status: 'finished' }).eq('id', room.id)
     } else {
       await supabase.from('rooms')
         .update({ current_season_reveal_round: nextRound })
         .eq('id', room.id)
     }
+  }
+
+  async function handleStartAutoReveal() {
+    if (!room || !myPlayer?.is_host || isAdvancing) return
+    autoRevealingRef.current = true
+    setAutoRevealing(true)
+    setIsAdvancing(true)
+    const supabase = createClient()
+    await supabase.from('rooms')
+      .update({ current_season_reveal_round: 1 })
+      .eq('id', room.id)
   }
 
   async function handlePlayAgain() {
@@ -348,21 +383,33 @@ export default function SeasonPage() {
         {/* Host controls / waiting */}
         {!isFinished && (
           isHost ? (
-            <button
-              onClick={handleReveal}
-              disabled={isAdvancing}
-              className="w-full bg-amber-500 hover:bg-amber-400 active:scale-95 disabled:opacity-50
-                         text-pitch-dark font-semibold py-4 rounded-xl
-                         transition-all duration-200 font-display text-xl tracking-widest"
-            >
-              {isAdvancing ? 'REVEALING…' :
-                round === 0 ? 'START SEASON REVEAL 🏆' :
-                round >= TOTAL_GAMES ? 'SHOW CHAMPION 🏆' :
-                `REVEAL GAME ${round + 1} →`}
-            </button>
+            autoRevealing ? (
+              <div className="card p-4 text-center">
+                <p className="text-amber-400 text-sm animate-pulse">
+                  🏆 Auto-revealing… Game {round} of {TOTAL_GAMES}
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={round === 0 ? handleStartAutoReveal : handleReveal}
+                disabled={isAdvancing}
+                className="w-full bg-amber-500 hover:bg-amber-400 active:scale-95 disabled:opacity-50
+                           text-pitch-dark font-semibold py-4 rounded-xl
+                           transition-all duration-200 font-display text-xl tracking-widest"
+              >
+                {isAdvancing ? 'REVEALING…' :
+                  round === 0 ? 'START SEASON REVEAL 🏆' :
+                  round >= TOTAL_GAMES ? 'SHOW CHAMPION 🏆' :
+                  `REVEAL GAME ${round + 1} →`}
+              </button>
+            )
           ) : (
             <div className="card p-4 text-center animate-pulse">
-              <p className="text-white/50 text-sm">Waiting for host to reveal next game…</p>
+              <p className="text-white/50 text-sm">
+                {autoRevealing
+                  ? `🏆 Revealing game ${round} of ${TOTAL_GAMES}…`
+                  : 'Waiting for host to start the reveal…'}
+              </p>
             </div>
           )
         )}
