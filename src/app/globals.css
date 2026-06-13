@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #072b19;
+  color: #e8f5e9;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pitch stripe pattern used as page background */
+.pitch-bg {
+  background-color: #0a4f2e;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.06) 0px,
+    rgba(0, 0, 0, 0.06) 60px,
+    transparent 60px,
+    transparent 120px
+  );
+}
+
+/* Card surface */
+.card {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+}
+
+/* Goal net texture overlay */
+.net-overlay {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Answer option button */
+.answer-btn {
+  @apply w-full text-center p-4 rounded-xl border border-white/20
+         bg-white/5 hover:bg-white/15 hover:border-white/40
+         transition-all duration-200 font-body text-white cursor-pointer
+         flex items-center justify-center gap-1;
+}
+
+.answer-btn.selected {
+  @apply bg-amber-500/20 border-amber-400 text-amber-100;
+}
+
+.answer-btn.correct {
+  @apply bg-green-500/30 border-green-400 text-green-100;
+}
+
+.answer-btn.wrong {
+  @apply bg-red-500/30 border-red-400 text-red-100;
+}
+
+.answer-btn:disabled {
+  @apply cursor-not-allowed opacity-70;
+}
+
+/* Scoreboard row */
+.score-row {
+  @apply flex items-center justify-between p-3 rounded-lg
+         bg-white/5 border border-white/10;
+}
+
+/* Goal dot indicators */
+.goal-dot {
+  @apply w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold;
+}
+
+.goal-dot.goal {
+  @apply bg-green-500 text-white;
+}
+
+.goal-dot.miss {
+  @apply bg-red-500/60 text-white;
+}
+
+.goal-dot.pending {
+  @apply bg-white/10 text-white/30 border border-white/20;
+}
+
+/* Display font utility */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
